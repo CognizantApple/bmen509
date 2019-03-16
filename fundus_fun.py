@@ -7,6 +7,7 @@ from tkinter.filedialog import askopenfilename
 import matplotlib.pyplot as plt
 import traceback, sys
 import numpy as np
+import scipy.misc
 import glob
 
 '''
@@ -16,11 +17,13 @@ segmented image.
 '''
 
 # Should we show images during processing?
-debug_img = True
+debug_img = False
+save_imgs = True
 
 root_dir = cwd = os.getcwd()
 default_images_folder = os.path.join(root_dir, "images")
 default_labels_folder = os.path.join(root_dir, "labels")
+saved_images_folder   = os.path.join(root_dir, "Saved")
 default_image = "im0002.ppm"
 default_label = "im0002.vk.ppm"
 
@@ -28,20 +31,24 @@ class Fundus_Fun_App:
     def __init__(self):
 
         # As a basic first step, load up the image and label
-        image_file = default_image
-        label_file = default_label
-        images_folder = default_images_folder
-        labels_folder = default_labels_folder
-        # image_path = os.path.join(images_folder, image_file)
-        # label_path = os.path.join(labels_folder, label_file)
+        self.images_folder = default_images_folder
+        self.labels_folder = default_labels_folder
+        # image_file = default_image
+        # label_file = default_label
+        # image_path = os.path.join(self.images_folder, image_file)
+        # label_path = os.path.join(self.labels_folder, label_file)
 
+        self.container_list = []
+
+    def load_images(self):
         image_list = []
+        image_name_list = []
         label_list = []
-        container_list = []
-        for filename in glob.glob(images_folder + '/*.ppm'): #assuming ppm
+        for filename in glob.glob(self.images_folder + '/*.ppm'): #assuming ppm
             image_list.append(self.load_image(filename, True))
+            image_name_list.append(os.path.splitext(os.path.basename(filename))[0])
 
-        for filename in glob.glob(labels_folder + '/*.ppm'): #assuming ppm
+        for filename in glob.glob(self.labels_folder + '/*.ppm'): #assuming ppm
             label_list.append(self.load_image(filename, False))
 
         if(len(image_list) != len(label_list)):
@@ -49,52 +56,57 @@ class Fundus_Fun_App:
             sys.exit(1)
 
         for i in range(len(image_list)):
-            container_list.append(Image_Container(image_list[i],label_list[i]))
+            self.container_list.append(Image_Container(image_list[i],label_list[i], image_name_list[i]))
 
+    def process_images(self):
+        for i in range(len(self.container_list)):
             # Simply display using matplotlib.
             if(debug_img):
                 plt.subplots(2,1)
                 plt.subplot(2,1,1)
-                plt.imshow(container_list[-1].raw_image)
+                plt.imshow(self.container_list[i].raw_image)
                 plt.title('Image - ' + str(i))
                 plt.subplot(2,1,2)
-                plt.imshow(container_list[-1].label_image)
+                plt.imshow(self.container_list[i].label_image)
                 plt.title('Label - ' + str(i))
                 plt.show()
 
-            container_list[-1].preprocess_image()
+            self.container_list[i].preprocess_image()
             if(debug_img):
                 plt.subplots(2,2)
                 plt.subplot(2,2,1)
-                plt.imshow(container_list[-1].not_region_of_interest_mask, cmap='gray')
+                plt.imshow(self.container_list[i].not_region_of_interest_mask, cmap='gray')
                 plt.title('Outside region of interest mask')
                 plt.subplot(2,2,2)
-                plt.imshow(container_list[-1].region_of_interest_edge_mask, cmap='gray')
+                plt.imshow(self.container_list[i].region_of_interest_edge_mask, cmap='gray')
                 plt.title('Region of interest edge')
                 plt.subplot(2,2,3)
-                plt.imshow(container_list[-1].preprocess_image, cmap='gray')
+                plt.imshow(self.container_list[i].preprocess_image, cmap='gray')
                 plt.title('Preprocessed image')
                 plt.show()
 
-            container_list[-1].find_vesselness_image()
-            container_list[-1].generate_segmented_image()
-            container_list[-1].score_segmented_image()
+            self.container_list[i].find_vesselness_image()
+            self.container_list[i].generate_segmented_image()
+            self.container_list[i].score_segmented_image()
             if(debug_img):
                 plt.subplots(2,2)
                 plt.subplot(2,2,1)
-                plt.imshow(container_list[-1].raw_image)
-                plt.title('Vesselness score - overall')
+                plt.imshow(self.container_list[i].raw_image)
+                plt.title('Original Image')
                 plt.subplot(2,2,2)
-                plt.imshow(container_list[-1].vesselness_score)
+                plt.imshow(self.container_list[i].vesselness_score)
                 plt.title('Vesselness score - overall, cropped')
                 plt.subplot(2,2,3)
-                plt.imshow(container_list[-1].segmented_image, cmap='gray')
+                plt.imshow(self.container_list[i].segmented_image, cmap='gray')
                 plt.title('Vesselness segmentation')
                 plt.subplot(2,2,4)
-                plt.imshow(container_list[-1].segment_score_image)
+                plt.imshow(self.container_list[i].segment_score_image)
                 plt.title(('Segmentation score : Accuracy = {0:.4f} : Sensitivity = {1:.4f} : ' + \
-                        'Specificity = {2:.4f}').format(container_list[-1].accuracy, container_list[-1].sensitivity, container_list[-1].specificity))
+                        'Specificity = {2:.4f}').format(self.container_list[i].accuracy, self.container_list[i].sensitivity, self.container_list[i].specificity))
                 plt.show()
+
+            if(save_imgs):
+                self.save_image_container_images(self.container_list[i], saved_images_folder)
 
     def load_image(self, image_filepath=None, convert_from_bgr=False):
         if(image_filepath is None):
@@ -108,14 +120,61 @@ class Fundus_Fun_App:
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         return image
 
+    def save_image_container_images(self, image_container, directory):
+        '''
+        Save the images of interest from an image_container once it's been processed.
+        '''
+        if not(os.path.exists(directory)):
+            os.makedirs(directory)
+
+        # Save each image of interest
+        scipy.misc.imsave(os.path.join(directory, image_container.image_name + '_vesselness.jpg'), image_container.vesselness_score)
+        scipy.misc.imsave(os.path.join(directory, image_container.image_name + '_segmented.jpg'), image_container.segmented_image)
+        scipy.misc.imsave(os.path.join(directory, image_container.image_name + '_segment_score.jpg'), image_container.segment_score_image)
+        scipy.misc.imsave(os.path.join(directory, image_container.image_name + '_preprocessed.jpg'), image_container.preprocess_image)
+        #scipy.misc.imsave(os.path.join(directory, image_container.image_name + '_enhanced.jpg'), image_container.enhanced_image)
+
+    def compute_accuracy_stats(self):
+        '''
+        Compute overall accuracy stats for the entire set of processed images.
+        '''
+        accuracies = []
+        sensitivities = []
+        specificities = []
+        for i in range(len(self.container_list)):
+            print(self.container_list[i].image_name + ":")
+            print("accuracy: {}".format(self.container_list[i].accuracy))
+            print("sensitivity: {}".format(self.container_list[i].sensitivity))
+            print("specificity: {}".format(self.container_list[i].specificity))
+            accuracies.append(self.container_list[i].accuracy)
+            sensitivities.append(self.container_list[i].sensitivity)
+            specificities.append(self.container_list[i].specificity)
+
+        print('Average accuracy: {}'.format(np.mean(accuracies)))
+        print('Median accuracy: {}'.format(np.median(accuracies)))
+        print('Std accuracy: {}'.format(np.std(accuracies)))
+        print('Min accuracy: {0} ({1})'.format(np.min(accuracies), self.container_list[np.argmin(accuracies)].image_name))
+        print('Max accuracy: {0} ({1})'.format(np.max(accuracies), self.container_list[np.argmax(accuracies)].image_name))
+        print('Average sensitivity: {}'.format(np.mean(sensitivities)))
+        print('Median sensitivity: {}'.format(np.median(sensitivities)))
+        print('Std sensitivity: {}'.format(np.std(sensitivities)))
+        print('Min sensitivity: {0} ({1})'.format(np.min(sensitivities), self.container_list[np.argmin(sensitivities)].image_name))
+        print('Max sensitivity: {0} ({1})'.format(np.max(sensitivities), self.container_list[np.argmax(sensitivities)].image_name))
+        print('Average specificity: {}'.format(np.mean(specificities)))
+        print('Median specificity: {}'.format(np.median(specificities)))
+        print('Std specificity: {}'.format(np.std(specificities)))
+        print('Min specificity: {0} ({1})'.format(np.min(specificities), self.container_list[np.argmin(specificities)].image_name))
+        print('Max specificity: {0} ({1})'.format(np.max(specificities), self.container_list[np.argmax(specificities)].image_name))
+
+
 class Image_Container:
     '''
     This is a class for holding an image and all the different
-    forms it takes as a result of processing. The actual processing
-    is done by other functions or classes.
+    forms it takes as a result of processing.
     '''
 
-    def __init__(self, raw_image, label_image):
+    def __init__(self, raw_image, label_image, image_name):
+        self.image_name = image_name
         self.raw_image = raw_image       # Just the raw image right off the disk
         self.label_image = label_image.astype(np.uint8)  # The corresponding hand-labelled image.
 
@@ -126,6 +185,9 @@ class Image_Container:
                                          # false negatives red.
         self.vesselness_score = None     # single-channel 'image' containing vesselness scores
         self.vesselness_threshold = 0.45 # Threshold at which we call the vesselness score a vessel!
+        self.accuracy = 0
+        self.specificity = 0
+        self.sensitivity = 0
 
         self.true_pos_colour  = [255,255,255] # white
         self.true_neg_colour  = [0  ,0  ,0  ] # black
@@ -248,8 +310,14 @@ class Image_Container:
 
 if __name__ == '__main__':
     application = Fundus_Fun_App()
+    application.load_images()
+    application.process_images()
+    application.compute_accuracy_stats()
     # try:
-    #     application = Fundus_Fun_App()
+        # application = Fundus_Fun_App()
+        # application.load_images()
+        # application.process_images()
+        # application.compute_accuracy_stats()
     # except Exception:
     #     exc_type, exc_value, exc_traceback = sys.exc_info()
     #     # print traceback

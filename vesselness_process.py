@@ -6,20 +6,17 @@ from skimage.feature import hessian_matrix, hessian_matrix_eigvals
 # The set of scales at which to run the vesselness scoring
 #vesselness_scales = [0.1,0.2,0.3,0.5,0.8,1.3,2.1,4,5,6,7,8,9,10,11,12,13,14,15,16]
 #vesselness_scales = [0.8,1.3,1.6,2.0,2.4,2.8,3.3,3.8,4.3,4.8,5.3,5.8,6.3,6.8,7.3]
-vesselness_scales = [2.2,2.6,3.0,3.4]
+vesselness_scales = [2.1,2.5,3.0,3.4]
 # beta is a threshold controlling the sensitivity to the blobness measure
 # TODO: goof around with this threshold and see if it helps.
-beta = 0.75
+beta = 0.80
 # c is a threshold controlling the sensitivity to second-order structureness.
 # for now this is just a rough guess, but there may actually be a much better choice for c ;)
-c = (130.0/255.0)
+c = (150.0/255.0)
 # Threshold on maximum brightness at which a pixel can be part of a vessel
-brightness_threshold = 130
+brightness_threshold = 160
 
-#Show the intermediate images with vesselness at different scales!
-debug_vessel_scores = True
-
-def compute_vesselness_multiscale(image):
+def compute_vesselness_multiscale(image, debug_vessel_scores=False):
     '''
     Run the vesselness computation at several different scales,
     and take the highest score!
