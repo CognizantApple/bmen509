@@ -9,6 +9,7 @@ import traceback, sys
 import numpy as np
 import scipy.misc
 import glob
+from skimage.morphology import remove_small_objects
 
 '''
 This is a super fun program for finding vessels in an image of a fundus!
@@ -17,8 +18,8 @@ segmented image.
 '''
 
 # Should we show images during processing?
-debug_img = False
-save_imgs = True
+debug_img = True
+save_imgs = False
 
 root_dir = cwd = os.getcwd()
 default_images_folder = os.path.join(root_dir, "images")
@@ -105,6 +106,20 @@ class Fundus_Fun_App:
                         'Specificity = {2:.4f}').format(self.container_list[i].accuracy, self.container_list[i].sensitivity, self.container_list[i].specificity))
                 plt.show()
 
+            self.container_list[i].generate_enhanced_image()
+            if(debug_img):
+                plt.subplots(1,3)
+                plt.subplot(1,3,1)
+                plt.imshow(self.container_list[i].raw_image)
+                plt.title('Original Image')
+                plt.subplot(1,3,2)
+                plt.imshow(self.container_list[i].vesselness_score, cmap='gray')
+                plt.title('Vesselness score - overall, cropped')
+                plt.subplot(1,3,3)
+                plt.imshow(self.container_list[i].enhanced_image)
+                plt.title('Enhanced Image')
+                plt.show()
+
             if(save_imgs):
                 self.save_image_container_images(self.container_list[i], saved_images_folder)
 
@@ -185,6 +200,7 @@ class Image_Container:
                                          # false negatives red.
         self.vesselness_score = None     # single-channel 'image' containing vesselness scores
         self.vesselness_threshold = 0.45 # Threshold at which we call the vesselness score a vessel!
+        self.vesselness_min_size = 200    # minimum size for a vessel (in pixels)
         self.accuracy = 0
         self.specificity = 0
         self.sensitivity = 0
@@ -241,8 +257,10 @@ class Image_Container:
         if(self.preprocess_image is None):
             self.preprocess_image = self.self.green_image = self.raw_image[:,:,1]
 
+        avg_grey = compute_avg_grey_value(self.preprocess_image, cv2.cvtColor(self.label_image, cv2.COLOR_RGB2GRAY))
+
         # Compute the vesselness of the image!
-        self.vesselness_score = compute_vesselness_multiscale(self.preprocess_image)
+        self.vesselness_score = compute_vesselness_multiscale(self.preprocess_image, c=(avg_grey / 255.0))
 
         # Exclude vessels outside the area of interest
         self.vesselness_score[self.not_region_of_interest_mask == 1.0] = 0
@@ -259,6 +277,9 @@ class Image_Container:
         self.segmented_image[below_threshold_indices] = 0
 
         self.segmented_image = self.segmented_image.astype(np.uint8)
+
+        # Remove objects (specks) too small to be vessels from the segmentation
+        self.segmented_image = remove_small_vessels(self.segmented_image, self.vesselness_min_size)
 
     def score_segmented_image(self):
         '''
@@ -304,9 +325,7 @@ class Image_Container:
         Use the vesselness scores and the original image
         to enhance the areas where there are vessels!
         '''
-        self.enhanced_image
-
-
+        self.enhanced_image = apply_vesselness_enhancement(self.raw_image, self.vesselness_score)
 
 if __name__ == '__main__':
     application = Fundus_Fun_App()

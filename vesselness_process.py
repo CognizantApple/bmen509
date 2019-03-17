@@ -1,4 +1,5 @@
 #! Python 3
+import cv2
 import numpy as np
 from math import sqrt, exp
 import matplotlib.pyplot as plt
@@ -12,11 +13,11 @@ vesselness_scales = [2.1,2.5,3.0,3.4]
 beta = 0.80
 # c is a threshold controlling the sensitivity to second-order structureness.
 # for now this is just a rough guess, but there may actually be a much better choice for c ;)
-c = (150.0/255.0)
+# c = (150.0/255.0)
 # Threshold on maximum brightness at which a pixel can be part of a vessel
 brightness_threshold = 160
 
-def compute_vesselness_multiscale(image, debug_vessel_scores=False):
+def compute_vesselness_multiscale(image, debug_vessel_scores=False, c=(150.0/255.0)):
     '''
     Run the vesselness computation at several different scales,
     and take the highest score!
@@ -27,7 +28,7 @@ def compute_vesselness_multiscale(image, debug_vessel_scores=False):
 
     # Run through each scale and compute the vesselness score for the image at that scale
     for scale in vesselness_scales:
-        scale_scores = compute_vesselness(image, scale)
+        scale_scores = compute_vesselness(image, scale, c)
         vesselness_scores.append(scale_scores)
         final_scores = np.maximum(scale_scores, final_scores)
 
@@ -45,7 +46,7 @@ def compute_vesselness_multiscale(image, debug_vessel_scores=False):
     plt.show()
     return final_scores
 
-def compute_vesselness(image, scale):
+def compute_vesselness(image, scale, c=(150.0/255.0)):
     '''
     Compute the vesselness at a specific scale.
     '''
@@ -77,3 +78,68 @@ def compute_vesselness(image, scale):
         scores[x,y] = vesselness
 
     return scores
+
+def compute_avg_grey_value(image, filter):
+    '''
+    Computes the average grey value in image after applying filter,
+    where "image" the green channel of an RGB image, and "filter" is some binary
+    image. Both images are assumed to be numpy arrays with the same dimensions.
+    '''
+    filtered_im = np.multiply(image, filter)
+    total_grey_value = 0
+    num_grey_values = 0
+
+    # For each pixel in the filtered image...
+    for x, y in np.ndindex(filtered_im.shape):
+        # If the value is non-zero (passed the filter),
+        # add it to the cumulative grey score.
+        if(filtered_im[x,y]):
+            total_grey_value += filtered_im[x,y]
+            num_grey_values += 1
+
+    avg_value = total_grey_value / num_grey_values
+
+    return avg_value
+
+def apply_vesselness_enhancement(image, scores):
+    '''
+    Performs brightness enhancement on an image based on a set of vesselness
+    scores for the image, where "image" is an RGB image and "scores" is a
+    set of vesselness scores. Both "image" and "scores" are assumed to
+    be numpy arrays with the same dimensions.
+    '''
+    # Colorspace transformation from RGB to HSV for brightness
+    # enhancement.
+    hsv_image = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+    v_channel = hsv_image[:, :, 2]
+
+    # For each pixel in the hsv image...
+    for x, y in np.ndindex(v_channel.shape):
+        # Brightness scaling factor is ratio of vesselness score
+        # to threshold...
+        factor = 1 - scores[x,y]
+        # Apply the brightness scaling factor to the V-channel
+        # of the HSV image.
+        hsv_image[x,y,2] = v_channel[x,y] * factor
+
+    return cv2.cvtColor(hsv_image, cv2.COLOR_HSV2RGB)
+
+def remove_small_vessels(image, min_vessel_size):
+    '''
+    Removes objects in "image" which are smaller than "min_vessel_size".
+    Assumes that "image" is a binary numpy array.
+    '''
+    # Gets each object in the binary image (assumes 8-connectivity)...
+    num_objects, output, stats, centroids = cv2.connectedComponentsWithStats(image, connectivity=8)
+
+    # Counts background as an object, so we remove it from the results...
+    sizes = stats[1:, -1]
+    num_objects = num_objects - 1
+
+    # Remove objects smaller than min_vessel_size...
+    output_image = np.zeros((output.shape))
+    for i in range(0, num_objects):
+        if sizes[i] >= min_vessel_size:
+            output_image[output == i + 1] = 255
+
+    return output_image
