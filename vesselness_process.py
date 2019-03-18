@@ -5,11 +5,9 @@ from math import sqrt, exp
 import matplotlib.pyplot as plt
 from skimage.feature import hessian_matrix, hessian_matrix_eigvals
 # The set of scales at which to run the vesselness scoring
-#vesselness_scales = [0.1,0.2,0.3,0.5,0.8,1.3,2.1,4,5,6,7,8,9,10,11,12,13,14,15,16]
-#vesselness_scales = [0.8,1.3,1.6,2.0,2.4,2.8,3.3,3.8,4.3,4.8,5.3,5.8,6.3,6.8,7.3]
-vesselness_scales = [2.1,2.5,3.0,3.4]
+vesselness_scales = [1.5,2.1,3.0,3.4]
+vesselness_coefficients = [1.0, 1.2, 2.5, 3.5]
 # beta is a threshold controlling the sensitivity to the blobness measure
-# TODO: goof around with this threshold and see if it helps.
 beta = 0.80
 # c is a threshold controlling the sensitivity to second-order structureness.
 # for now this is just a rough guess, but there may actually be a much better choice for c ;)
@@ -27,8 +25,8 @@ def compute_vesselness_multiscale(image, debug_vessel_scores=False, c=(150.0/255
     final_scores = np.zeros((image.shape[0], image.shape[1]))
 
     # Run through each scale and compute the vesselness score for the image at that scale
-    for scale in vesselness_scales:
-        scale_scores = compute_vesselness(image, scale, c)
+    for i in range(len(vesselness_scales)):
+        scale_scores = np.clip(compute_vesselness(image, vesselness_scales[i], c) * vesselness_coefficients[i], 0.0, 1.0)
         vesselness_scores.append(scale_scores)
         final_scores = np.maximum(scale_scores, final_scores)
 

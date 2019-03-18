@@ -18,8 +18,10 @@ segmented image.
 '''
 
 # Should we show images during processing?
-debug_img = True
-save_imgs = False
+debug_img = False
+save_imgs = True
+recompute_c = False # Call to recompute C for the set of images being used.
+                    # If false, a previously computed value of C is used.
 
 root_dir = cwd = os.getcwd()
 default_images_folder = os.path.join(root_dir, "images")
@@ -27,6 +29,7 @@ default_labels_folder = os.path.join(root_dir, "labels")
 saved_images_folder   = os.path.join(root_dir, "Saved")
 default_image = "im0002.ppm"
 default_label = "im0002.vk.ppm"
+
 
 class Fundus_Fun_App:
     def __init__(self):
@@ -57,10 +60,13 @@ class Fundus_Fun_App:
             sys.exit(1)
 
         # Get the average grey value for vessels in all provided sample images
-        total_avg = 0
-        for i in range(len(image_list)):
-            total_avg = total_avg + compute_avg_grey_value(image_list[i][:,:,1], cv2.cvtColor(label_list[i], cv2.COLOR_RGB2GRAY))
-        vesselness_c = ( total_avg / len(image_list) ) / 255.0
+        if(recompute_c):
+            total_avg = 0
+            for i in range(len(image_list)):
+                total_avg = total_avg + compute_avg_grey_value(image_list[i][:,:,1], cv2.cvtColor(label_list[i], cv2.COLOR_RGB2GRAY))
+            vesselness_c = ( total_avg / len(image_list) ) / 255.0
+        else:
+            vesselness_c = 0.6322369109741592
 
         for i in range(len(image_list)):
             self.container_list.append(Image_Container(image_list[i],label_list[i], image_name_list[i], vesselness_c))
@@ -153,7 +159,7 @@ class Fundus_Fun_App:
         scipy.misc.imsave(os.path.join(directory, image_container.image_name + '_segmented.jpg'), image_container.segmented_image)
         scipy.misc.imsave(os.path.join(directory, image_container.image_name + '_segment_score.jpg'), image_container.segment_score_image)
         scipy.misc.imsave(os.path.join(directory, image_container.image_name + '_preprocessed.jpg'), image_container.preprocess_image)
-        #scipy.misc.imsave(os.path.join(directory, image_container.image_name + '_enhanced.jpg'), image_container.enhanced_image)
+        scipy.misc.imsave(os.path.join(directory, image_container.image_name + '_enhanced.jpg'), image_container.enhanced_image)
 
     def compute_accuracy_stats(self):
         '''
@@ -205,7 +211,7 @@ class Image_Container:
                                          # true positives are white, true negatives black, false positives blue,
                                          # false negatives red.
         self.vesselness_score = None     # single-channel 'image' containing vesselness scores
-        self.vesselness_threshold = 0.45 # Threshold at which we call the vesselness score a vessel!
+        self.vesselness_threshold = 0.4 # Threshold at which we call the vesselness score a vessel!
         self.vesselness_min_size = 200   # Minimum size for a vessel (in pixels)
         self.vesselness_c = vesselness_c # Sensitivity threshold for vesselness computation
         self.accuracy = 0
@@ -254,7 +260,9 @@ class Image_Container:
             pix = closest_point(pix, region_of_interest_list)
             self.preprocess_image[pixel[0], pixel[1]] = self.preprocess_image[pix[0], pix[1]]
 
-        self.preprocess_image = window_level_function(self.preprocess_image, 180, 120)
+        # The window and level ended up making us a lot less sensitive.
+        # self.preprocess_image = window_level_function(self.preprocess_image, 180, 120)
+
 
     def find_vesselness_image(self):
         ''' Compute the vesselness score at each point in the image!
