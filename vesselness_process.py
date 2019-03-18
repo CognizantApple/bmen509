@@ -113,8 +113,8 @@ def apply_vesselness_enhancement(image, scores):
 
     # For each pixel in the hsv image...
     for x, y in np.ndindex(v_channel.shape):
-        # Brightness scaling factor is ratio of vesselness score
-        # to threshold...
+        # Brightness scaling factor is 1 minus the vesselness score
+        # (so that pixels with a higher vesselness score become darker)...
         factor = 1 - scores[x,y]
         # Apply the brightness scaling factor to the V-channel
         # of the HSV image.
