@@ -56,8 +56,14 @@ class Fundus_Fun_App:
             print("Number of images and labels are not the same!")
             sys.exit(1)
 
+        # Get the average grey value for vessels in all provided sample images
+        total_avg = 0
         for i in range(len(image_list)):
-            self.container_list.append(Image_Container(image_list[i],label_list[i], image_name_list[i]))
+            total_avg = total_avg + compute_avg_grey_value(image_list[i][:,:,1], cv2.cvtColor(label_list[i], cv2.COLOR_RGB2GRAY))
+        vesselness_c = ( total_avg / len(image_list) ) / 255.0
+
+        for i in range(len(image_list)):
+            self.container_list.append(Image_Container(image_list[i],label_list[i], image_name_list[i], vesselness_c))
 
     def process_images(self):
         for i in range(len(self.container_list)):
@@ -188,7 +194,7 @@ class Image_Container:
     forms it takes as a result of processing.
     '''
 
-    def __init__(self, raw_image, label_image, image_name):
+    def __init__(self, raw_image, label_image, image_name, vesselness_c):
         self.image_name = image_name
         self.raw_image = raw_image       # Just the raw image right off the disk
         self.label_image = label_image.astype(np.uint8)  # The corresponding hand-labelled image.
@@ -200,7 +206,8 @@ class Image_Container:
                                          # false negatives red.
         self.vesselness_score = None     # single-channel 'image' containing vesselness scores
         self.vesselness_threshold = 0.45 # Threshold at which we call the vesselness score a vessel!
-        self.vesselness_min_size = 200    # minimum size for a vessel (in pixels)
+        self.vesselness_min_size = 200   # Minimum size for a vessel (in pixels)
+        self.vesselness_c = vesselness_c # Sensitivity threshold for vesselness computation
         self.accuracy = 0
         self.specificity = 0
         self.sensitivity = 0
@@ -257,10 +264,8 @@ class Image_Container:
         if(self.preprocess_image is None):
             self.preprocess_image = self.self.green_image = self.raw_image[:,:,1]
 
-        avg_grey = compute_avg_grey_value(self.preprocess_image, cv2.cvtColor(self.label_image, cv2.COLOR_RGB2GRAY))
-
         # Compute the vesselness of the image!
-        self.vesselness_score = compute_vesselness_multiscale(self.preprocess_image, c=(avg_grey / 255.0))
+        self.vesselness_score = compute_vesselness_multiscale(self.preprocess_image, c=self.vesselness_c)
 
         # Exclude vessels outside the area of interest
         self.vesselness_score[self.not_region_of_interest_mask == 1.0] = 0
