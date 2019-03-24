@@ -59,14 +59,15 @@ def check_value_in_value_list(value, val_array):
 
 
 def closest_point(point, point_arr):
-    deltas = point_arr - point
-    dist_2 = np.einsum('ij,ij->i', deltas, deltas)
-    return point_arr[np.argmin(dist_2)]
+    '''Find the 2D point in point_arr
+    That is closest to the arg point'''
+    # compute the distance from the point to each
+    # other point in either dimension
+    diffs = point_arr - point
+    # Use einsum for speed, but we're really just
+    # squaring the distance between points in each
+    # dimension and summing them up.
+    min_dist = np.einsum('ij,ij->i', diffs, diffs)
+    # Select the point at the shortest distance!
+    return point_arr[np.argmin(min_dist)]
 
-# taking the negative of these numbers changes the up to down!
-move_right_boundary     = 0.3927     # 22.5 degrees
-move_up_right_boundary  = 1.1781     # 67.5 degrees
-move_up_left_boundary   = 1.9635     # 112.5 degrees
-move_left_boundary      = 2.7489     # 157.5 degrees
-y_idx = 1
-x_idx = 0
