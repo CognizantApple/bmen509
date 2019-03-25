@@ -6,12 +6,11 @@ import matplotlib.pyplot as plt
 from skimage.feature import hessian_matrix, hessian_matrix_eigvals
 # The set of scales at which to run the vesselness scoring
 vesselness_scales = [1.5,2.1,3.0,3.4]
-vesselness_coefficients = [1.0, 1.2, 2.5, 3.5]
+vesselness_coefficients = [1.0, 1.1, 1.3, 1.5]
 # beta is a threshold controlling the sensitivity to the blobness measure
 beta = 0.80
 # c is a threshold controlling the sensitivity to second-order structureness.
-# for now this is just a rough guess, but there may actually be a much better choice for c ;)
-# c = (150.0/255.0)
+
 # Threshold on maximum brightness at which a pixel can be part of a vessel
 brightness_threshold = 160
 
@@ -27,6 +26,7 @@ def compute_vesselness_multiscale(image, debug_vessel_scores=False, c=(150.0/255
     # Run through each scale and compute the vesselness score for the image at that scale
     for i in range(len(vesselness_scales)):
         scale_scores = np.clip(compute_vesselness(image, vesselness_scales[i], c) * vesselness_coefficients[i], 0.0, 1.0)
+        # scale_scores = compute_vesselness(image, vesselness_scales[i], c)
         vesselness_scores.append(scale_scores)
         final_scores = np.maximum(scale_scores, final_scores)
 
@@ -52,30 +52,26 @@ def compute_vesselness(image, scale, c=(150.0/255.0)):
     hessian = hessian_matrix(image, sigma=scale)
     hessian_eigenvalues = hessian_matrix_eigvals(hessian)
 
-    scores = np.zeros((image.shape[0], image.shape[1]))
+    # Blobness measure
+    R_beta = hessian_eigenvalues[1] / hessian_eigenvalues[0]
+    # Second-order structureness - Don't bother squaring it because we would just take the root later.
+    so_structureness_squared = np.square(hessian_eigenvalues[1]) + np.square(hessian_eigenvalues[0])
 
-    # Run through each pixel in the image
-    for x, y in np.ndindex(image.shape):
-        # in hessian_eigenvalues, the values are ordered from largest to smallest,
-        # but we want the first eigenvalue to be the smallest.
-        eigenvalue_xy_1 = hessian_eigenvalues[1,x,y]
-        eigenvalue_xy_2 = hessian_eigenvalues[0,x,y]
+    max_s = np.max(np.sqrt(so_structureness_squared))
 
-        vesselness = 0.0
-        if(eigenvalue_xy_2 > 0 and image[x,y] < brightness_threshold):
+    c = 0.105 * max_s
 
-            # Blobness measure
-            R_beta = eigenvalue_xy_1 / eigenvalue_xy_2
-            # Second-order structureness
-            so_structureness = sqrt(eigenvalue_xy_1**2 + eigenvalue_xy_2**2)
+    # Vesselness scoring function in 2d credit to A. Frangi et al.
+    vesselness_pt1 = np.exp(-( (np.square(R_beta)) / ( 2 * (np.square(beta)))))
+    vesselness_pt2 = (1 - np.exp(-( (so_structureness_squared) / ( 2 * (c**2)))))
+    vesselness = vesselness_pt1 * vesselness_pt2
 
-            # Vesselness scoring function in 2d credit to A. Frangi et al.
-            vesselness = exp(-( (R_beta**2) / ( 2 * (beta**2)))) * \
-                         (1 - exp(-( (so_structureness**2) / ( 2 * (c**2)))))
 
-        scores[x,y] = vesselness
+    no_vessel_idx = np.logical_or(hessian_eigenvalues[0] <= 0, image >= brightness_threshold)
+    vesselness[no_vessel_idx] = 0
 
-    return scores
+    return vesselness
+
 
 def compute_avg_grey_value(image, filter):
     '''

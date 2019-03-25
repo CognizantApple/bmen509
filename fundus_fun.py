@@ -29,6 +29,8 @@ healthy_images_folder = os.path.join(root_dir, "healthyimages")
 healthy_labels_folder = os.path.join(root_dir, "healthylabels")
 saved_images_folder   = os.path.join(root_dir, "Saved")
 
+preprocessed_images_folder = os.path.join(root_dir, "preprocessed")
+
 
 class Fundus_Fun_App:
     def __init__(self):
@@ -218,7 +220,7 @@ class Image_Container:
                                          # true positives are white, true negatives black, false positives blue,
                                          # false negatives red.
         self.vesselness_score = None     # single-channel 'image' containing vesselness scores
-        self.vesselness_threshold = 0.4 # Threshold at which we call the vesselness score a vessel!
+        self.vesselness_threshold = 0.29 # Threshold at which we call the vesselness score a vessel!
         self.vesselness_min_size = 200   # Minimum size for a vessel (in pixels)
         self.vesselness_c = vesselness_c # Sensitivity threshold for vesselness computation
         self.accuracy = 0
@@ -236,6 +238,7 @@ class Image_Container:
         in the region of interest.
         Finally, use a window and level function to remove white blotches that are misinterpreted as vessels.
         '''
+
         # Extract the red component of the image
         self.red_image = self.raw_image[:,:,0]
         self.green_image = self.raw_image[:,:,1]
@@ -256,6 +259,12 @@ class Image_Container:
         self.region_of_interest_edge_mask = self.green_image.copy()
         self.region_of_interest_edge_mask[region_of_interest_edge == 1.0] = 255
 
+        # We have our masks, at this point jump out if the preprocessed file already exists.
+        processed_file = preprocessed_images_folder + '/' + self.image_name + '.ppm'
+        if os.path.exists(processed_file): #assuming ppm
+            self.preprocess_image = cv2.imread(processed_file, 0)
+            return
+
         self.preprocess_image = self.green_image.copy()
 
         # For each pixel outside the region of interest, colour it to be the same as the
@@ -266,6 +275,9 @@ class Image_Container:
             pix = pixel
             pix = closest_point(pix, region_of_interest_list)
             self.preprocess_image[pixel[0], pixel[1]] = self.preprocess_image[pix[0], pix[1]]
+
+
+        scipy.misc.imsave(processed_file, self.preprocess_image)
 
         # The window and level ended up making us a lot less sensitive.
         # self.preprocess_image = window_level_function(self.preprocess_image, 180, 120)
@@ -350,7 +362,7 @@ class Image_Container:
 if __name__ == '__main__':
     application = Fundus_Fun_App()
     application.load_all_images()
-    application.process_images(application.healthy_container_list)
-    application.compute_accuracy_stats(application.healthy_container_list)
     application.process_images(application.container_list)
     application.compute_accuracy_stats(application.container_list)
+    application.process_images(application.healthy_container_list)
+    application.compute_accuracy_stats(application.healthy_container_list)
