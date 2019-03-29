@@ -14,7 +14,7 @@ beta = 0.80
 # Threshold on maximum brightness at which a pixel can be part of a vessel
 brightness_threshold = 160
 
-def compute_vesselness_multiscale(image, debug_vessel_scores=False, c=(150.0/255.0)):
+def compute_vesselness_multiscale(image, debug_vessel_scores=True, c=(150.0/255.0)):
     '''
     Run the vesselness computation at several different scales,
     and take the highest score!
@@ -67,7 +67,7 @@ def compute_vesselness(image, scale, c=(150.0/255.0)):
     vesselness = vesselness_pt1 * vesselness_pt2
 
 
-    no_vessel_idx = np.logical_or(hessian_eigenvalues[0] <= 0, image >= brightness_threshold)
+    no_vessel_idx = np.logical_or(hessian_eigenvalues[0] <= 0, hessian_eigenvalues[1] <= 0, image >= brightness_threshold)
     vesselness[no_vessel_idx] = 0
 
     return vesselness

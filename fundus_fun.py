@@ -17,7 +17,7 @@ segmented image.
 '''
 
 # Should we show images during processing?
-debug_img = False
+debug_img = True
 save_imgs = True
 recompute_c = False # Call to recompute C for the set of images being used.
                     # If false, a previously computed value of C is used.

@@ -1,7 +1,6 @@
 import numpy as np
 import math
 
-
 def window_level_function(image, window, level):
     # As recommended, convert the input image to a double
     image = image.astype(np.double)
