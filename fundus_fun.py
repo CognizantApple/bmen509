@@ -17,10 +17,8 @@ segmented image.
 '''
 
 # Should we show images during processing?
-debug_img = True
+debug_img = False
 save_imgs = True
-recompute_c = False # Call to recompute C for the set of images being used.
-                    # If false, a previously computed value of C is used.
 
 root_dir = cwd = os.getcwd()
 images_folder = os.path.join(root_dir, "images")
@@ -64,19 +62,10 @@ class Fundus_Fun_App:
             print("Number of images and labels are not the same!")
             sys.exit(1)
 
-        # Get the average grey value for vessels in all provided sample images
-        if(recompute_c):
-            total_avg = 0
-            for i in range(len(image_list)):
-                total_avg = total_avg + compute_avg_grey_value(image_list[i][:,:,1], cv2.cvtColor(label_list[i], cv2.COLOR_RGB2GRAY))
-            vesselness_c = ( total_avg / len(image_list) ) / 255.0
-        else:
-            vesselness_c = 0.6322369109741592
-
         container_list = []
 
         for i in range(len(image_list)):
-            container_list.append(Image_Container(image_list[i],label_list[i], image_name_list[i], vesselness_c))
+            container_list.append(Image_Container(image_list[i],label_list[i], image_name_list[i]))
 
         return container_list
 
@@ -97,12 +86,15 @@ class Fundus_Fun_App:
             if(debug_img):
                 plt.subplots(2,2)
                 plt.subplot(2,2,1)
+                plt.imshow(container_list[i].red_image, cmap='gray')
+                plt.title('Image Red Channel')
+                plt.subplot(2,2,2)
                 plt.imshow(container_list[i].not_region_of_interest_mask, cmap='gray')
                 plt.title('Outside region of interest mask')
-                plt.subplot(2,2,2)
+                plt.subplot(2,2,3)
                 plt.imshow(container_list[i].region_of_interest_edge_mask, cmap='gray')
                 plt.title('Region of interest edge')
-                plt.subplot(2,2,3)
+                plt.subplot(2,2,4)
                 plt.imshow(container_list[i].preprocess_image, cmap='gray')
                 plt.title('Preprocessed image')
                 plt.show()
@@ -116,7 +108,7 @@ class Fundus_Fun_App:
                 plt.imshow(container_list[i].raw_image)
                 plt.title('Original Image')
                 plt.subplot(2,2,2)
-                plt.imshow(container_list[i].vesselness_score)
+                plt.imshow(container_list[i].vesselness_score, cmap='gray')
                 plt.title('Vesselness score - overall, cropped')
                 plt.subplot(2,2,3)
                 plt.imshow(container_list[i].segmented_image, cmap='gray')
@@ -209,7 +201,7 @@ class Image_Container:
     forms it takes as a result of processing.
     '''
 
-    def __init__(self, raw_image, label_image, image_name, vesselness_c):
+    def __init__(self, raw_image, label_image, image_name):
         self.image_name = image_name
         self.raw_image = raw_image       # Just the raw image right off the disk
         self.label_image = label_image.astype(np.uint8)  # The corresponding hand-labelled image.
@@ -222,7 +214,6 @@ class Image_Container:
         self.vesselness_score = None     # single-channel 'image' containing vesselness scores
         self.vesselness_threshold = 0.29 # Threshold at which we call the vesselness score a vessel!
         self.vesselness_min_size = 200   # Minimum size for a vessel (in pixels)
-        self.vesselness_c = vesselness_c # Sensitivity threshold for vesselness computation
         self.accuracy = 0
         self.specificity = 0
         self.sensitivity = 0
@@ -233,12 +224,13 @@ class Image_Container:
         self.false_neg_colour = [255,0  ,0  ] # red
 
     def preprocess_image(self):
-        ''' Two major steps. first, use the red channel to create a mask for the area of interest.
+        ''' Three major steps. first, use the red channel to create a mask for the area of interest.
         Then, use the red mask to change the outside of the green channel image to be the average colour
         in the region of interest.
         Finally, use a window and level function to remove white blotches that are misinterpreted as vessels.
         '''
 
+        ''' STEP 2 - Use red channel to find ROI'''
         # Extract the red component of the image
         self.red_image = self.raw_image[:,:,0]
         self.green_image = self.raw_image[:,:,1]
@@ -248,9 +240,10 @@ class Image_Container:
         self.not_region_of_interest_mask = np.zeros(self.red_image.shape)
         self.not_region_of_interest_mask[not_region_of_interest_idx] = 255
 
+        ''' STEP 3 - Find the edge of the ROI'''
+        # Expand the region of non-interest by one pixel
         self.not_region_of_interest_mask = ExpandMask(self.not_region_of_interest_mask, 4)
         not_region_of_interest_idx = self.not_region_of_interest_mask == 1.0
-
 
         # Create a thin layer of pixels, which will be the boundary of the layer of interest.
         not_region_of_interest_mask_expanded = ExpandMask(self.not_region_of_interest_mask, 1)
@@ -267,6 +260,7 @@ class Image_Container:
 
         self.preprocess_image = self.green_image.copy()
 
+        ''' STEP 4 - Blend periphery of image into ROI'''
         # For each pixel outside the region of interest, colour it to be the same as the
         # closest pixel inside the area of interest
         region_of_interest_list = np.asarray(np.argwhere(region_of_interest_edge == 1.0))
@@ -276,12 +270,8 @@ class Image_Container:
             pix = closest_point(pix, region_of_interest_list)
             self.preprocess_image[pixel[0], pixel[1]] = self.preprocess_image[pix[0], pix[1]]
 
-
+        # Save the preprocessed image so we have the option of re-using it
         scipy.misc.imsave(processed_file, self.preprocess_image)
-
-        # The window and level ended up making us a lot less sensitive.
-        # self.preprocess_image = window_level_function(self.preprocess_image, 180, 120)
-
 
     def find_vesselness_image(self):
         ''' Compute the vesselness score at each point in the image!
@@ -292,10 +282,7 @@ class Image_Container:
             self.preprocess_image = self.self.green_image = self.raw_image[:,:,1]
 
         # Compute the vesselness of the image!
-        self.vesselness_score = compute_vesselness_multiscale(self.preprocess_image, c=self.vesselness_c)
-
-        # Exclude vessels outside the area of interest
-        self.vesselness_score[self.not_region_of_interest_mask == 1.0] = 0
+        self.vesselness_score = compute_vesselness_multiscale(self.preprocess_image, self.not_region_of_interest_mask, debug_img)
 
     def generate_segmented_image(self):
         '''
@@ -305,9 +292,10 @@ class Image_Container:
         self.segmented_image = np.copy(self.vesselness_score)
         above_threshold_indices = self.segmented_image >= self.vesselness_threshold
         below_threshold_indices = self.segmented_image < self.vesselness_threshold
-        self.segmented_image[above_threshold_indices] = 255
-        self.segmented_image[below_threshold_indices] = 0
+        self.segmented_image[above_threshold_indices] = 255 # Set vessels to white
+        self.segmented_image[below_threshold_indices] = 0   # Non-vessels to black
 
+        # Make sure the segmented image is using integer values
         self.segmented_image = self.segmented_image.astype(np.uint8)
 
         # Remove objects (specks) too small to be vessels from the segmentation
@@ -362,7 +350,7 @@ class Image_Container:
 if __name__ == '__main__':
     application = Fundus_Fun_App()
     application.load_all_images()
-    application.process_images(application.container_list)
-    application.compute_accuracy_stats(application.container_list)
     application.process_images(application.healthy_container_list)
     application.compute_accuracy_stats(application.healthy_container_list)
+    application.process_images(application.container_list)
+    application.compute_accuracy_stats(application.container_list)

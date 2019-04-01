@@ -1,20 +1,23 @@
 #! Python 3
 import cv2
+print(cv2.__version__)
 import numpy as np
+print(np.__version__)
 from math import sqrt, exp
 import matplotlib.pyplot as plt
+import matplotlib
+print(matplotlib.__version__)
 from skimage.feature import hessian_matrix, hessian_matrix_eigvals
+import skimage
+print(skimage.__version__)
+
 # The set of scales at which to run the vesselness scoring
 vesselness_scales = [1.5,2.1,3.0,3.4]
-vesselness_coefficients = [1.0, 1.1, 1.3, 1.5]
+vesselness_coefficients = [1.0, 1.1, 1.25, 1.4]
 # beta is a threshold controlling the sensitivity to the blobness measure
 beta = 0.80
-# c is a threshold controlling the sensitivity to second-order structureness.
 
-# Threshold on maximum brightness at which a pixel can be part of a vessel
-brightness_threshold = 160
-
-def compute_vesselness_multiscale(image, debug_vessel_scores=True, c=(150.0/255.0)):
+def compute_vesselness_multiscale(image, outside_region_of_interest_mask, debug_vessel_scores=False):
     '''
     Run the vesselness computation at several different scales,
     and take the highest score!
@@ -25,8 +28,9 @@ def compute_vesselness_multiscale(image, debug_vessel_scores=True, c=(150.0/255.
 
     # Run through each scale and compute the vesselness score for the image at that scale
     for i in range(len(vesselness_scales)):
-        scale_scores = np.clip(compute_vesselness(image, vesselness_scales[i], c) * vesselness_coefficients[i], 0.0, 1.0)
-        # scale_scores = compute_vesselness(image, vesselness_scales[i], c)
+        scale_scores = np.clip(compute_vesselness(image, vesselness_scales[i]) * vesselness_coefficients[i], 0.0, 1.0)
+        # Exclude vessels outside the area of interest
+        scale_scores[outside_region_of_interest_mask == 1.0] = 0
         vesselness_scores.append(scale_scores)
         final_scores = np.maximum(scale_scores, final_scores)
 
@@ -36,15 +40,15 @@ def compute_vesselness_multiscale(image, debug_vessel_scores=True, c=(150.0/255.
         i = 1
         for score in vesselness_scores:
             plt.subplot(2,2,i)
-            plt.imshow(score)
+            plt.imshow(score, cmap='gray')
             plt.title('Vesseness - Scale = ' + str(vesselness_scales[i-1]))
             plt.colorbar()
             i += 1
 
-    plt.show()
+        plt.show()
     return final_scores
 
-def compute_vesselness(image, scale, c=(150.0/255.0)):
+def compute_vesselness(image, scale):
     '''
     Compute the vesselness at a specific scale.
     '''
@@ -59,6 +63,7 @@ def compute_vesselness(image, scale, c=(150.0/255.0)):
 
     max_s = np.max(np.sqrt(so_structureness_squared))
 
+    # 0.105 seems to be a good constant for adjusting this constant!
     c = 0.105 * max_s
 
     # Vesselness scoring function in 2d credit to A. Frangi et al.
@@ -66,8 +71,9 @@ def compute_vesselness(image, scale, c=(150.0/255.0)):
     vesselness_pt2 = (1 - np.exp(-( (so_structureness_squared) / ( 2 * (c**2)))))
     vesselness = vesselness_pt1 * vesselness_pt2
 
-
-    no_vessel_idx = np.logical_or(hessian_eigenvalues[0] <= 0, hessian_eigenvalues[1] <= 0, image >= brightness_threshold)
+    # To make sure we're looking for dark vessels, throw away vesselness scores
+    # where the larger eigenvalue is <= 0
+    no_vessel_idx = hessian_eigenvalues[0] <= 0
     vesselness[no_vessel_idx] = 0
 
     return vesselness

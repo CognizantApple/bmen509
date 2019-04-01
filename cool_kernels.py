@@ -1,35 +1,14 @@
 #! python 3
 import cv2
 import os
-from vesselness_process import *
-from process_utils import *
-from tkinter.filedialog import askopenfilename
 import matplotlib.pyplot as plt
-import traceback, sys
 import numpy as np
-import scipy.misc
-import glob
 
 '''
 This is a super fun program for finding vessels in an image of a fundus!
 The original image is enhanced and segmented, and scored against a hand-
 segmented image.
 '''
-
-# Should we show images during processing?
-debug_img = False
-save_imgs = True
-recompute_c = False # Call to recompute C for the set of images being used.
-                    # If false, a previously computed value of C is used.
-
-root_dir = cwd = os.getcwd()
-images_folder = os.path.join(root_dir, "images")
-labels_folder = os.path.join(root_dir, "labels")
-healthy_images_folder = os.path.join(root_dir, "healthyimages")
-healthy_labels_folder = os.path.join(root_dir, "healthylabels")
-saved_images_folder   = os.path.join(root_dir, "Saved")
-
-preprocessed_images_folder = os.path.join(root_dir, "preprocessed")
 
 def gaussian_kernel(sigma, kernel_size):
     # Make sure kernel_size is at least 1, and odd.
